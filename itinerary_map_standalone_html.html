@@ -334,7 +334,7 @@
             <button id="btnPlay">▶️ Play</button>
             <button id="btnReset">🔄 Reset Animation</button>
             <label style="display:flex;gap:8px;align-items:center">
-              <input id="chkLoop" type="checkbox" checked /> Loop
+              <input id="chkLoop" type="checkbox" /> Loop
             </label>
           </div>
         </div>
@@ -365,7 +365,7 @@
     let markers = new Map();
     let polySegments = []; // gradient segments
     let playing = false, currentLeg = -1;
-    let loop = true; byId('chkLoop').addEventListener('change', e => loop = e.target.checked);
+    let loop = false; byId('chkLoop').addEventListener('change', e => loop = e.target.checked);
 
     // --- UI bindings ---
     map.on('click', e => { byId('inLat').value = e.latlng.lat.toFixed(6); byId('inLng').value = e.latlng.lng.toFixed(6); });
@@ -377,7 +377,7 @@
       const color = byId('inColor').value || '#7dd3fc';
       const lat = parseFloat(byId('inLat').value); const lng = parseFloat(byId('inLng').value);
       if (Number.isNaN(lat) || Number.isNaN(lng)) { alert('Click the map or enter coordinates.'); return; }
-      addStop({ name, emoji, color, lat, lng, duration });
+      addStop({ name, emoji, color, lat, lng, duration }, true);
       // clear minimal fields except coords
       byId('inName').value = ''; byId('inEmoji').value = '';
     });
@@ -403,18 +403,22 @@
     byId('btnReset').addEventListener('click', resetAnimation);
 
     // --- Core functions ---
-    function addStop(s) {
+    function addStop(s, isSingle = false) {
       const id = crypto.randomUUID();
       const stop = { id, name: s.name, emoji: s.emoji || '📍', color: s.color || '#7dd3fc', lat: +s.lat, lng: +s.lng, duration: s.duration || 2 };
       stops.push(stop);
       renderStops();
-      fitBounds();
-      flyToStop(id, stop.duration);
+      if (isSingle) {
+        fitBounds();
+      }
     }
 
     function loadStops(arr) {
       clearAll();
-      arr.forEach(addStop);
+      arr.forEach(s => {
+        addStop(s, false);
+      });
+      fitBounds();
     }
 
     function clearAll() {
@@ -476,9 +480,9 @@
       });
     }
 
-    function fitBounds() {
+    function fitBounds(pad = 0.2) {
       const pts = stops.map(s => [s.lat, s.lng]);
-      if (pts.length) { map.fitBounds(L.latLngBounds(pts).pad(0.2), { animate: true }); }
+      if (pts.length) { map.fitBounds(L.latLngBounds(pts).pad(pad), { animate: true }); }
     }
 
     function moveBefore(id, beforeId) {
@@ -498,7 +502,11 @@
       renderStops();
     }
 
-    function flyToStop(id, duration) { const s = stops.find(x => x.id === id); if (!s) return; map.flyTo([s.lat, s.lng], 13, { duration }); }
+    function flyToStop(id, duration) {
+      const s = stops.find(x => x.id === id);
+      if (!s) return;
+      map.flyTo([s.lat, s.lng], s.zoom || 15, { duration });
+    }
     function selectStop(id) { flyToStop(id); }
 
     function markerHTML(idx, emoji, color) {
@@ -530,25 +538,30 @@
       currentLeg = -1;
       fitBounds();
     }
-    function play() {
+    async function play() {
       if (stops.length < 2) { alert('Add at least two stops to play the animation.'); return; }
       playing = true; byId('btnPlay').textContent = '⏸️ Pause';
       fitBounds();
-      recursivePlay();
+      await recursivePlay();
+      fitBounds(0.8);
     }
-    function recursivePlay() {
+
+    function timeout(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function recursivePlay() {
       currentLeg += 1;
-      const stop = stops[currentLeg];
-      const duration = stop.duration || 2;
-      flyToStop(stop.id, duration);
-      if (currentLeg >= stops.length - 1) {
+      if (currentLeg >= stops.length) {
         currentLeg = -1;
         if (!loop) { pause(); return; }
       }
-      setTimeout(() => {
-        if (!playing) return;
-        recursivePlay();
-      }, duration * 1000 + 1000);
+
+      const stop = stops[currentLeg];
+      const duration = stop.duration || 2;
+      flyToStop(stop.id, duration);
+      await timeout(duration * 1000 + 1000);// pause 1.2 seconds between legs
+      if (playing) await recursivePlay();
     }
     function pause() { playing = false; byId('btnPlay').textContent = '▶️ Play'; }
 
@@ -557,20 +570,19 @@
     // --- Demo data ---
     function loadDemo() {
       const demo = [
-        { name: 'Arrive Zürich', emoji: '☕️', color: '#22d3ee', lat: 47.3779, lng: 8.5402, duration: 5 },
-        { name: 'Train to Lucerne', emoji: '🌉', color: '#38bdf8', lat: 47.0502, lng: 8.3093, duration: 1 },
+        { name: 'Arrive Zürich', emoji: '☕️', color: '#22d3ee', lat: 47.3779, lng: 8.5402, duration: 2 },
+        { name: 'Train to Lucerne', emoji: '🌉', color: '#38bdf8', lat: 47.0502, lng: 8.3093, duration: 2 },
         { name: 'Boat on Lake Lucerne', emoji: '🛥️', color: '#60a5fa', lat: 46.9946, lng: 8.3443, duration: 3 },
         { name: 'Overnight Interlaken', emoji: '🌄', color: '#818cf8', lat: 46.6863, lng: 7.8632, duration: 2 },
         { name: 'Jungfraujoch day trip', emoji: '🏔️', color: '#a78bfa', lat: 46.5476, lng: 7.9850, duration: 2 }
       ];
       loadStops(demo);
-      fitBounds();
     }
 
     // Load from URL hash if present
     (function () {
       if (location.hash.startsWith('#data=')) {
-        try { const json = atob(decodeURIComponent(location.hash.slice(6))); const arr = JSON.parse(json); loadStops(arr); fitBounds(); } catch (e) { console.warn('bad hash'); }
+        try { const json = atob(decodeURIComponent(location.hash.slice(6))); const arr = JSON.parse(json); loadStops(arr); } catch (e) { console.warn('bad hash'); }
       }
     })();
 
