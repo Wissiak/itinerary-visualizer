@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trip Itinerary Map – POV Timeline</title>
+  <title>Trip Itinerary Animation</title>
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
@@ -249,21 +249,6 @@
       margin-top: 6px
     }
 
-    /* POV vignette */
-    .vignette {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      background: radial-gradient(650px 350px at 50% 60%, transparent 30%, rgba(0, 0, 0, .25) 65%, rgba(0, 0, 0, .45) 100%);
-      mix-blend-mode: multiply;
-      opacity: 0;
-      transition: opacity .3s
-    }
-
-    .vignette.on {
-      opacity: 1
-    }
-
     /* Responsive */
     @media (max-width: 980px) {
       #app {
@@ -282,11 +267,10 @@
   <div id="app">
     <div style="position:relative">
       <div id="map"></div>
-      <div id="vignette" class="vignette"></div>
     </div>
     <aside class="panel">
       <header>
-        <div class="chip">POV Trip Itinerary</div>
+        <div class="chip">Trip Itinerary</div>
         <div class="toolbar">
           <button id="btnDemo" class="btn-accent" title="Load demo">✨ Demo</button>
           <button id="btnExport" title="Export itinerary">⬇️ Export</button>
@@ -303,8 +287,8 @@
               </label>
             </div>
             <div>
-              <label>Date & Time
-                <input id="inTime" type="datetime-local" />
+              <label>Fly Animation Duration
+                <input id="duration" type="number" min="1" value="5" default="2" />
               </label>
             </div>
           </div>
@@ -320,9 +304,6 @@
               </label>
             </div>
           </div>
-          <label>Notes
-            <textarea id="inNotes" rows="2" placeholder="Optional: what happens here?"></textarea>
-          </label>
           <div class="row">
             <div>
               <label>Latitude
@@ -349,20 +330,12 @@
 
         <div class="section">
           <h3>Playback</h3>
-          <div class="timeline">
-            <button id="btnPlay">▶️ Play</button>
-            <input id="slider" type="range" min="0" max="1000" value="0" />
-            <div id="timeLabel" class="badge">--:--</div>
-          </div>
           <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-            <label style="display:flex;gap:8px;align-items:center">
-              <input id="chkPOV" type="checkbox" /> First-person (follow me)
-            </label>
+            <button id="btnPlay">▶️ Play</button>
+            <button id="btnReset">🔄 Reset Animation</button>
             <label style="display:flex;gap:8px;align-items:center">
               <input id="chkLoop" type="checkbox" checked /> Loop
             </label>
-            <div class="hint" style="margin-left:auto">Keyboard: <span class="kbd">Space</span> play/pause • <span
-                class="kbd">←/→</span> scrub</div>
           </div>
         </div>
 
@@ -376,34 +349,8 @@
   <script>
     // --- Utilities ---
     const byId = id => document.getElementById(id);
-    function fmtDate(dt) {
-      if (!dt) return '—';
-      try { const d = new Date(dt); return d.toLocaleString(); } catch (e) { return dt }
-    }
-    function haversine(a, b) {
-      const R = 6371000; const toRad = x => x * Math.PI / 180;
-      const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
-      const A = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
-      const c = 2 * Math.atan2(Math.sqrt(A), Math.sqrt(1 - A));
-      return R * c;
-    }
-    function bearing(a, b) {
-      const toRad = x => x * Math.PI / 180, toDeg: x=> x * 180 / Math.PI;
-      const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
-      const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
-        Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
-      return (toDeg(Math.atan2(y, x)) + 360) % 360;
-    }
-    function destPoint(start, brng, dist) {
-      const R = 6371000; const δ = dist / R; const θ = brng * Math.PI / 180; const φ1 = start.lat * Math.PI / 180; const λ1 = start.lng * Math.PI / 180;
-      const sinφ1 = Math.sin(φ1), cosφ1 = Math.cos(φ1), sinδ = Math.sin(δ), cosδ = Math.cos(δ), sinθ = Math.sin(θ), cosθ = Math.cos(θ);
-      const sinφ2 = sinφ1 * cosδ + cosφ1 * sinδ * cosθ;
-      const φ2 = Math.asin(sinφ2);
-      const y = sinθ * sinδ * cosφ1;
-      const x = cosδ - sinφ1 * sinφ2;
-      const λ2 = λ1 + Math.atan2(y, x);
-      return { lat: φ2 * 180 / Math.PI, lng: ((λ2 * 180 / Math.PI + 540) % 360) - 180 };
-    }
+
+    byId('duration').value = '2';
 
     // --- Map init ---
     const map = L.map('map', { zoomControl: false }).setView([46.8, 8.2], 6);
@@ -413,15 +360,11 @@
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    // POV vignette toggle
-    const vignette = byId('vignette');
-
     // --- State ---
-    let stops = []; // {id, name, t, notes, emoji, color, lat, lng}
+    let stops = []; // {id, name, t, emoji, color, lat, lng}
     let markers = new Map();
     let polySegments = []; // gradient segments
-    let povMarker = null, povCone = null; // moving marker + FOV
-    let playing = false, t0 = 0, playRAF = null; // animation
+    let playing = false, currentLeg = -1;
     let loop = true; byId('chkLoop').addEventListener('change', e => loop = e.target.checked);
 
     // --- UI bindings ---
@@ -429,15 +372,14 @@
 
     byId('btnAdd').addEventListener('click', () => {
       const name = byId('inName').value.trim() || 'Untitled stop';
-      const t = byId('inTime').value;
-      const notes = byId('inNotes').value.trim();
+      const duration = parseFloat(byId('duration').value) || 2;
       const emoji = byId('inEmoji').value.trim() || '📍';
       const color = byId('inColor').value || '#7dd3fc';
       const lat = parseFloat(byId('inLat').value); const lng = parseFloat(byId('inLng').value);
       if (Number.isNaN(lat) || Number.isNaN(lng)) { alert('Click the map or enter coordinates.'); return; }
-      addStop({ name, t, notes, emoji, color, lat, lng });
+      addStop({ name, emoji, color, lat, lng, duration });
       // clear minimal fields except coords
-      byId('inName').value = ''; byId('inNotes').value = ''; byId('inEmoji').value = '';
+      byId('inName').value = ''; byId('inEmoji').value = '';
     });
 
     byId('btnDemo').addEventListener('click', () => loadDemo());
@@ -458,26 +400,16 @@
     });
 
     byId('btnPlay').addEventListener('click', togglePlay);
-    byId('chkPOV').addEventListener('change', e => {
-      if (e.target.checked) { vignette.classList.add('on'); ensurePOV(); } else { vignette.classList.remove('on'); clearPOV(); }
-    });
-
-    const slider = byId('slider');
-    slider.addEventListener('input', () => { scrubTo(slider.value / 1000); });
-    document.addEventListener('keydown', e => {
-      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-      if (e.code === 'ArrowRight') { e.preventDefault(); slider.value = Math.min(1000, parseInt(slider.value) + 20); slider.dispatchEvent(new Event('input')); }
-      if (e.code === 'ArrowLeft') { e.preventDefault(); slider.value = Math.max(0, parseInt(slider.value) - 20); slider.dispatchEvent(new Event('input')); }
-    });
+    byId('btnReset').addEventListener('click', resetAnimation);
 
     // --- Core functions ---
     function addStop(s) {
       const id = crypto.randomUUID();
-      const tNum = s.t ? new Date(s.t).getTime() : NaN;
-      const stop = { id, name: s.name, t: s.t || '', tNum, notes: s.notes || '', emoji: s.emoji || '📍', color: s.color || '#7dd3fc', lat: +s.lat, lng: +s.lng };
+      const stop = { id, name: s.name, emoji: s.emoji || '📍', color: s.color || '#7dd3fc', lat: +s.lat, lng: +s.lng, duration: s.duration || 2 };
       stops.push(stop);
       renderStops();
       fitBounds();
+      flyToStop(id, stop.duration);
     }
 
     function loadStops(arr) {
@@ -488,19 +420,11 @@
     function clearAll() {
       // clear markers & paths
       stops = []; markers.forEach(m => m.remove()); markers.clear();
-      if (povMarker) { povMarker.remove(); povMarker = null }
-      if (povCone) { povCone.remove(); povCone = null }
       polySegments.forEach(s => s.remove()); polySegments = [];
       renderStops();
     }
 
     function renderStops() {
-      // sort by time (keeping those without time at end)
-      stops.sort((a, b) => {
-        if (Number.isNaN(a.tNum) && Number.isNaN(b.tNum)) return 0;
-        if (Number.isNaN(a.tNum)) return 1; if (Number.isNaN(b.tNum)) return -1;
-        return a.tNum - b.tNum;
-      });
       byId('countBadge').textContent = `${stops.length} stop${stops.length !== 1 ? 's' : ''}`;
 
       // draw markers
@@ -519,12 +443,12 @@
 
       // draw gradient path by segments
       polySegments.forEach(s => s.remove()); polySegments = [];
-      const pts = stops.filter(s => !Number.isNaN(s.tNum)).map(s => [s.lat, s.lng]);
+      const pts = stops.map(s => [s.lat, s.lng]);
       if (pts.length >= 2) {
         const n = pts.length - 1;
         for (let i = 0; i < n; i++) {
           const c = lerpColor('#22d3ee', '#a78bfa', i / (n - 1 || 1));
-          const seg = L.polyline([pts[i], pts[i + 1]], { color: c, weight: 6, opacity: 0.9, lineCap: 'round', dashArray: i % 2 ? null : '8 8' }).addTo(map);
+          const seg = L.polyline([pts[i], pts[i + 1]], { color: c, weight: 6, opacity: 0.9, lineCap: 'round', dashArray: '8 8' }).addTo(map);
           polySegments.push(seg);
         }
       }
@@ -538,8 +462,6 @@
           <div class="dot" style="background: ${hexWithAlpha(s.color, .2)}; border:2px solid ${hexWithAlpha(s.color, .9)}">${idx + 1}</div>
           <div>
             <h4>${escapeHtml(s.emoji)} ${escapeHtml(s.name)}</h4>
-            <div class="meta">${s.t ? fmtDate(s.t) : 'No time'} • ${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}</div>
-            ${s.notes ? `<div class="meta">${escapeHtml(s.notes)}</div>` : ''}
           </div>
           <div class="actions">
             <button title="Fly to" onclick="flyToStop('${s.id}')">🧭</button>
@@ -552,17 +474,6 @@
         el.addEventListener('drop', e => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); moveBefore(id, s.id); });
         list.appendChild(el);
       });
-
-      // update slider range based on time span
-      updateTimelineMeta();
-    }
-
-    function updateTimelineMeta() {
-      const timed = stops.filter(s => !Number.isNaN(s.tNum));
-      if (timed.length < 2) { byId('timeLabel').textContent = ''; return; }
-      const start = timed[0].tNum, end = timed[timed.length - 1].tNum; const span = end - start;
-      slider.disabled = span <= 0; slider.value = slider.value || 0;
-      byId('timeLabel').textContent = new Date(start).toLocaleDateString();
     }
 
     function fitBounds() {
@@ -580,32 +491,15 @@
     function editStop(id) {
       const s = stops.find(x => x.id === id); if (!s) return;
       const name = prompt('Name', s.name); if (name === null) return;
-      const t = prompt('Date/time (YYYY-MM-DDTHH:MM)', s.t);
-      const notes = prompt('Notes', s.notes);
+      const duration = prompt('Duration', s.duration); if (duration === null) return;
       const emoji = prompt('Emoji', s.emoji);
       const color = prompt('Color (hex)', s.color);
-      Object.assign(s, { name, t, tNum: t ? new Date(t).getTime() : NaN, notes, emoji, color });
+      Object.assign(s, { name, duration, emoji, color });
       renderStops();
     }
 
-    function flyToStop(id) { const s = stops.find(x => x.id === id); if (!s) return; map.flyTo([s.lat, s.lng], 13, { duration: 1.2 }); }
+    function flyToStop(id, duration) { const s = stops.find(x => x.id === id); if (!s) return; map.flyTo([s.lat, s.lng], 13, { duration }); }
     function selectStop(id) { flyToStop(id); }
-
-    function ensurePOV() {
-      if (!stops.length) return;
-      if (!povMarker) {
-        const icon = L.divIcon({ className: 'x', html: povHTML(), iconSize: [34, 34], iconAnchor: [17, 17] });
-        povMarker = L.marker([stops[0].lat, stops[0].lng], { icon }).addTo(map);
-      }
-      if (!povCone) { povCone = L.polygon([[0, 0], [0, 0], [0, 0]], { color: '#ffffff88', weight: 2, fillColor: '#ffffff22', fillOpacity: 0.25, opacity: 0.8 }).addTo(map); }
-    }
-    function clearPOV() { if (povMarker) { povMarker.remove(); povMarker = null } if (povCone) { povCone.remove(); povCone = null } }
-
-    function povHTML() {
-      return `<div style="width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 30%, #fff, #c7d2fe 35%, #6366f1 65%);box-shadow:0 0 16px rgba(99,102,241,.6), inset 0 0 12px rgba(0,0,0,.35);">
-        <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid #0f172a; transform:translateY(-2px)"></div>
-      </div>`;
-    }
 
     function markerHTML(idx, emoji, color) {
       return `<div style="position:relative;width:32px;height:32px;border-radius:50%;background: ${hexWithAlpha(color, .18)};border:2px solid ${hexWithAlpha(color, .9)};display:grid;place-items:center;backdrop-filter: blur(2px)">
@@ -627,70 +521,47 @@
     function escapeHtml(s) { return (s + "").replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[m])); }
 
     // --- Playback ---
-    function timelineMeta() {
-      const timed = stops.filter(s => !Number.isNaN(s.tNum));
-      if (timed.length < 2) return null;
-      const start = timed[0].tNum, end = timed[timed.length - 1].tNum, span = end - start;
-      return { timed, start, end, span };
-    }
 
     function togglePlay() {
       if (playing) { pause(); } else { play(); }
     }
-    function play() { if (!timelineMeta()) return; playing = true; byId('btnPlay').textContent = '⏸️ Pause'; t0 = performance.now() - (slider.value / 1000) * (timelineMeta().span); loopTick(); }
-    function pause() { playing = false; byId('btnPlay').textContent = '▶️ Play'; cancelAnimationFrame(playRAF); }
-
-    function loopTick(now) {
-      const meta = timelineMeta(); if (!meta) { pause(); return; }
-      const { start, span } = meta;
-      const elapsed = (performance.now() - t0);
-      let frac = Math.min(1, Math.max(0, elapsed / span));
-      scrubTo(frac);
-      if (frac >= 1) { if (loop) { t0 = performance.now(); } else { pause(); return; } }
-      if (playing) playRAF = requestAnimationFrame(loopTick);
+    function resetAnimation() {
+      pause();
+      currentLeg = -1;
+      fitBounds();
     }
-
-    function scrubTo(frac) {
-      const meta = timelineMeta(); if (!meta) return;
-      const { timed, start, end, span } = meta;
-      const targetTime = start + frac * span; slider.value = Math.round(frac * 1000);
-      byId('timeLabel').textContent = new Date(targetTime).toLocaleString();
-
-      // find current leg
-      let i = 0; while (i < timed.length - 1 && targetTime > timed[i + 1].tNum) i++;
-      const A = timed[i], B = timed[Math.min(i + 1, timed.length - 1)];
-      const legSpan = Math.max(1, (B.tNum - A.tNum));
-      const legFrac = Math.min(1, Math.max(0, (targetTime - A.tNum) / legSpan));
-
-      const pos = interpolate({ lat: A.lat, lng: A.lng }, { lat: B.lat, lng: B.lng }, legFrac);
-
-      // ensure POV artifacts exist
-      if (byId('chkPOV').checked) {
-        ensurePOV(); if (povMarker) { povMarker.setLatLng(pos); }
-        // heading + cone
-        const hdg = bearing(A, B);
-        if (povMarker) { povMarker.setIcon(L.divIcon({ className: 'x', html: povHTML(), iconSize: [34, 34], iconAnchor: [17, 17] })); }
-        if (povCone) {
-          const spanM = Math.max(150, Math.min(1500, haversine(A, B) * 0.3));
-          const left = destPoint(pos, hdg - 30, spanM);
-          const fwd = destPoint(pos, hdg, spanM);
-          const right = destPoint(pos, hdg + 30, spanM);
-          povCone.setLatLngs([[pos.lat, pos.lng], [left.lat, left.lng], [fwd.lat, fwd.lng], [right.lat, right.lng]]);
-        }
-        map.panTo(pos, { animate: false });
+    function play() {
+      if (stops.length < 2) { alert('Add at least two stops to play the animation.'); return; }
+      playing = true; byId('btnPlay').textContent = '⏸️ Pause';
+      fitBounds();
+      recursivePlay();
+    }
+    function recursivePlay() {
+      currentLeg += 1;
+      const stop = stops[currentLeg];
+      const duration = stop.duration || 2;
+      flyToStop(stop.id, duration);
+      if (currentLeg >= stops.length - 1) {
+        currentLeg = -1;
+        if (!loop) { pause(); return; }
       }
+      setTimeout(() => {
+        if (!playing) return;
+        recursivePlay();
+      }, duration * 1000 + 1000);
     }
+    function pause() { playing = false; byId('btnPlay').textContent = '▶️ Play'; }
 
     function interpolate(a, b, t) { return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t }; }
 
     // --- Demo data ---
     function loadDemo() {
       const demo = [
-        { name: 'Arrive Zürich', t: '2025-09-08T09:00', notes: 'Coffee at HB', emoji: '☕️', color: '#22d3ee', lat: 47.3779, lng: 8.5402 },
-        { name: 'Train to Lucerne', t: '2025-09-08T11:10', notes: 'Walk the Kapellbrücke', emoji: '🌉', color: '#38bdf8', lat: 47.0502, lng: 8.3093 },
-        { name: 'Boat on Lake Lucerne', t: '2025-09-08T14:00', notes: 'Views of Pilatus', emoji: '🛥️', color: '#60a5fa', lat: 46.9946, lng: 8.3443 },
-        { name: 'Overnight Interlaken', t: '2025-09-08T19:30', notes: 'Harder Kulm sunset', emoji: '🌄', color: '#818cf8', lat: 46.6863, lng: 7.8632 },
-        { name: 'Jungfraujoch day trip', t: '2025-09-09T09:00', notes: 'Top of Europe', emoji: '🏔️', color: '#a78bfa', lat: 46.5476, lng: 7.9850 }
+        { name: 'Arrive Zürich', emoji: '☕️', color: '#22d3ee', lat: 47.3779, lng: 8.5402, duration: 5 },
+        { name: 'Train to Lucerne', emoji: '🌉', color: '#38bdf8', lat: 47.0502, lng: 8.3093, duration: 1 },
+        { name: 'Boat on Lake Lucerne', emoji: '🛥️', color: '#60a5fa', lat: 46.9946, lng: 8.3443, duration: 3 },
+        { name: 'Overnight Interlaken', emoji: '🌄', color: '#818cf8', lat: 46.6863, lng: 7.8632, duration: 2 },
+        { name: 'Jungfraujoch day trip', emoji: '🏔️', color: '#a78bfa', lat: 46.5476, lng: 7.9850, duration: 2 }
       ];
       loadStops(demo);
       fitBounds();
