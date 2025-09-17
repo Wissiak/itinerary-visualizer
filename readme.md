@@ -1,6 +1,6 @@
 # Travel Itinerary Visualizer
 
-_Hosted at [wissiak.ch](https://itinerary-visualizer.wissiak.ch/)_
+_Hosted at [wissiak.ch](https://itinerary.wissiak.ch/)_
 
 Simple visualizer used by me to screen record a video of the travel itinerary. 
 Features:
